@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/vlkhvnn/TestON/internal/models"
 	"github.com/vlkhvnn/TestON/internal/store"
 )
 
@@ -83,16 +85,35 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	case "!recent":
 		var lang string
+		var limit = 10
 		if len(parts) >= 2 {
-			lang = parts[1]
-		} else {
+			if num, err := strconv.Atoi(parts[1]); err == nil {
+				limit = num
+			} else {
+				lang = parts[1]
+			}
+		}
+
+		if len(parts) >= 3 {
+			if num, err := strconv.Atoi(parts[2]); err == nil {
+				limit = num
+			}
+		}
+
+		if limit < 1 {
+			limit = 1
+		} else if limit > 100 {
+			limit = 100
+		}
+
+		if lang == "" {
 			lang, _ = b.store.Lang.GetUserLang(ctx, guildID)
 			if lang == "" {
 				lang = "en"
 			}
 		}
 
-		events, err := b.store.Event.GetRecent(ctx, lang, 10)
+		events, err := b.store.Event.GetRecent(ctx, lang, limit)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("No recent changes for language: %s", lang))
@@ -101,26 +122,7 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error retrieving recent changes: %v", err))
 			return
 		}
-
-		var responseBuilder strings.Builder
-		for i, event := range events {
-			t := time.Unix(event.Timestamp, 0).Format(time.RFC822)
-			encodedTitle := url.PathEscape(event.Title)
-			urlStr := fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, encodedTitle)
-			entry := fmt.Sprintf("%d. [%s] [%s](%s) by **%s**\nAuthor Comment: %s\n\n",
-				i+1, t, event.Title, urlStr, event.User, event.Comment)
-
-			if responseBuilder.Len()+len(entry) > 2000 {
-				s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
-				responseBuilder.Reset()
-			}
-
-			responseBuilder.WriteString(entry)
-		}
-
-		if responseBuilder.Len() > 0 {
-			s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
-		}
+		b.sendRecentChanges(s, m, lang, events, limit)
 
 	case "!stats":
 		if len(parts) < 2 {
@@ -156,5 +158,28 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("On %s, there were %d changes for language '%s'.", dateStr, count, lang))
+	}
+}
+
+func (b *Bot) sendRecentChanges(s *discordgo.Session, m *discordgo.MessageCreate, lang string, events []*models.RecentChangeEvent, limit int) {
+	var responseBuilder strings.Builder
+
+	for i, event := range events {
+		t := time.Unix(event.Timestamp, 0).Format(time.RFC822)
+		encodedTitle := url.PathEscape(event.Title)
+		urlStr := fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, encodedTitle)
+		entry := fmt.Sprintf("%d. [%s] [%s](%s) by **%s**\nComment: %s\n\n",
+			i+1, t, event.Title, urlStr, event.User, event.Comment)
+
+		if responseBuilder.Len()+len(entry) > 2000 {
+			s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
+			responseBuilder.Reset()
+		}
+
+		responseBuilder.WriteString(entry)
+	}
+
+	if responseBuilder.Len() > 0 {
+		s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
 	}
 }
