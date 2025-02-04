@@ -2,7 +2,6 @@ package models
 
 import "encoding/json"
 
-// RecentChangeEvent represents a Wikimedia recent change event.
 type RecentChangeEvent struct {
 	ID         json.Number `json:"id"`
 	Type       string      `json:"type"`

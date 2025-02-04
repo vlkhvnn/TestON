@@ -9,7 +9,6 @@ type StatStore struct {
 	db *sql.DB
 }
 
-// IncrementByLang increases the edit count for a given language and date.
 func (s *StatStore) IncrementByLang(ctx context.Context, lang string, date string) error {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeoutDuration)
 	defer cancel()
@@ -24,7 +23,6 @@ func (s *StatStore) IncrementByLang(ctx context.Context, lang string, date strin
 	return err
 }
 
-// Get retrieves the number of edits for a language on a specific date.
 func (s *StatStore) Get(ctx context.Context, lang string, date string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeoutDuration)
 	defer cancel()

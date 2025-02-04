@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"context"
 	"os"
 	"os/signal"
 
@@ -15,6 +15,7 @@ type application struct {
 	config config
 	store  store.Storage
 	logger *zap.SugaredLogger
+	bot    discord.Bot
 }
 
 type config struct {
@@ -30,25 +31,31 @@ type dbConfig struct {
 }
 
 func (app *application) run() error {
-	// Start the Wikimedia stream consumer in the background.
-	go wikimedia.StartStream(&app.store)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Create and start the Discord bot.
-	bot, err := discord.NewBot(app.config.token, app.store)
-	if err != nil {
+	go func() {
+		if err := wikimedia.StartStream(ctx, &app.store, app.logger); err != nil {
+			app.logger.Errorw("Failed to start Wikimedia stream", "error", err)
+			cancel()
+		}
+	}()
+
+	if err := app.bot.Start(); err != nil {
 		return err
 	}
-	if err := bot.Start(); err != nil {
-		return err
+
+	defer app.bot.Stop()
+
+	app.logger.Info("Application started. Press CTRL-C to exit.")
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	select {
+	case <-sigCh:
+	case <-ctx.Done():
 	}
-	defer bot.Stop()
-	log.Println("Bot is running. Press CTRL-C to exit.")
 
-	// Wait for a termination signal.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
-	<-stop
-
-	log.Println("Shutting down.")
+	app.logger.Info("Shutting down...")
 	return nil
 }

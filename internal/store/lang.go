@@ -9,7 +9,6 @@ type LangStore struct {
 	db *sql.DB
 }
 
-// SetUserLang sets a user's preferred language.
 func (s *LangStore) SetUserLang(ctx context.Context, userID, lang string) error {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeoutDuration)
 	defer cancel()
@@ -23,7 +22,6 @@ func (s *LangStore) SetUserLang(ctx context.Context, userID, lang string) error 
 	return err
 }
 
-// GetUserLang retrieves the preferred language for a user.
 func (s *LangStore) GetUserLang(ctx context.Context, userID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeoutDuration)
 	defer cancel()

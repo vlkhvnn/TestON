@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/joho/godotenv"
 	"github.com/vlkhvnn/TestON/internal/db"
+	"github.com/vlkhvnn/TestON/internal/discord"
 	"github.com/vlkhvnn/TestON/internal/env"
 	"github.com/vlkhvnn/TestON/internal/store"
 	"go.uber.org/zap"
@@ -42,10 +43,16 @@ func main() {
 
 	store := store.NewStorage(db)
 
+	bot, err := discord.NewBot(cfg.token, store)
+	if err != nil {
+		logger.Fatalf("Error starting discord bot: %v", err)
+	}
+
 	app := application{
 		config: cfg,
 		store:  store,
 		logger: logger,
+		bot:    *bot,
 	}
 
 	logger.Fatal(app.run())

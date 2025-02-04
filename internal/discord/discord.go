@@ -15,13 +15,11 @@ import (
 
 var guildDefaultLang = make(map[string]string)
 
-// Bot represents the Discord bot.
 type Bot struct {
 	session *discordgo.Session
 	store   store.Storage
 }
 
-// NewBot creates a new Discord bot instance.
 func NewBot(token string, storage store.Storage) (*Bot, error) {
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -31,12 +29,11 @@ func NewBot(token string, storage store.Storage) (*Bot, error) {
 		session: dg,
 		store:   storage,
 	}
-	// Register message handler.
+
 	dg.AddHandler(bot.messageHandler)
 	return bot, nil
 }
 
-// Start opens the Discord session.
 func (b *Bot) Start() error {
 	if err := b.session.Open(); err != nil {
 		return err
@@ -45,19 +42,15 @@ func (b *Bot) Start() error {
 	return nil
 }
 
-// Stop closes the Discord session.
 func (b *Bot) Stop() {
 	b.session.Close()
 }
 
-// messageHandler processes incoming Discord messages.
 func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore messages from the bot itself
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
-	// Use guild ID as key for default language; if DM, use the author ID.
 	guildID := m.GuildID
 	if guildID == "" {
 		guildID = m.Author.ID
@@ -79,7 +72,6 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		lang := parts[1]
 
-		// Store language preference in PostgreSQL
 		err := b.store.Lang.SetUserLang(ctx, guildID, lang)
 		if err != nil {
 			s.ChannelMessageSend(m.ChannelID, "Failed to set language preference.")
@@ -90,12 +82,10 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Default language set to '%s' for this session.", lang))
 
 	case "!recent":
-		// Usage: !recent [optional: language_code]
 		var lang string
 		if len(parts) >= 2 {
 			lang = parts[1]
 		} else {
-			// Try getting the user's preferred language from the database
 			lang, _ = b.store.Lang.GetUserLang(ctx, guildID)
 			if lang == "" {
 				lang = "en"
@@ -133,7 +123,6 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	case "!stats":
-		// Usage: !stats [yyyy-mm-dd] [optional: language_code]
 		if len(parts) < 2 {
 			s.ChannelMessageSend(m.ChannelID, "Usage: !stats [yyyy-mm-dd] [optional: language_code]")
 			return
@@ -144,21 +133,18 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if len(parts) >= 3 {
 			lang = parts[2]
 		} else {
-			// Try getting the user's preferred language from the database
 			lang, _ = b.store.Lang.GetUserLang(ctx, guildID)
 			if lang == "" {
 				lang = "en"
 			}
 		}
 
-		// Validate date format
 		_, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
 			s.ChannelMessageSend(m.ChannelID, "Invalid date format. Please use yyyy-mm-dd.")
 			return
 		}
 
-		// Fetch stats from PostgreSQL
 		count, err := b.store.Stat.Get(ctx, lang, dateStr)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {

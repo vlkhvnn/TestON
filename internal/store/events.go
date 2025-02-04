@@ -16,13 +16,25 @@ func (s *EventStore) Add(ctx context.Context, lang string, event *models.RecentC
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeoutDuration)
 	defer cancel()
 
-	eventID := event.ID.String() // Convert json.Number to string before inserting
+	eventID := event.ID.String()
 
 	query := `
 	INSERT INTO events (event_id, lang, title, username, comment, timestamp, wiki, server_name)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 	`
 	_, err := s.db.ExecContext(ctx, query, eventID, lang, event.Title, event.User, event.Comment, event.Timestamp, event.Wiki, event.ServerName)
+	if err != nil {
+		return err
+	}
+
+	cleanupQuery := `
+	DELETE FROM events WHERE event_id IN (
+		SELECT event_id FROM events WHERE lang = $1
+		ORDER BY timestamp DESC OFFSET 100
+	);
+	`
+	_, err = s.db.ExecContext(ctx, cleanupQuery, lang)
+
 	return err
 }
 
