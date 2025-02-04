@@ -1,6 +1,7 @@
 package wikimedia
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"strings"
@@ -11,7 +12,7 @@ import (
 )
 
 // StartStream connects to the Wikimedia SSE stream and processes events.
-func StartStream(eventStore *store.Store) {
+func StartStream(eventStore *store.Storage) {
 	client := sse.NewClient("https://stream.wikimedia.org/v2/stream/recentchange")
 	err := client.SubscribeRaw(func(msg *sse.Event) {
 		var event models.RecentChangeEvent
@@ -33,8 +34,7 @@ func StartStream(eventStore *store.Store) {
 		lang := parts[0]
 
 		// Store the event.
-		eventStore.AddEvent(lang, event)
-		log.Printf("Stored event for [%s]: %s by %s", lang, event.Title, event.User)
+		eventStore.Event.Add(context.Background(), lang, &event)
 	})
 	if err != nil {
 		log.Fatalf("Error subscribing to Wikimedia stream: %v", err)

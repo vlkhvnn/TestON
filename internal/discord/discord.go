@@ -1,6 +1,8 @@
 package discord
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -15,19 +17,19 @@ var guildDefaultLang = make(map[string]string)
 
 // Bot represents the Discord bot.
 type Bot struct {
-	session    *discordgo.Session
-	eventStore *store.Store
+	session *discordgo.Session
+	store   store.Storage
 }
 
 // NewBot creates a new Discord bot instance.
-func NewBot(token string, eventStore *store.Store) (*Bot, error) {
+func NewBot(token string, storage store.Storage) (*Bot, error) {
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, err
 	}
 	bot := &Bot{
-		session:    dg,
-		eventStore: eventStore,
+		session: dg,
+		store:   storage,
 	}
 	// Register message handler.
 	dg.AddHandler(bot.messageHandler)
@@ -50,7 +52,7 @@ func (b *Bot) Stop() {
 
 // messageHandler processes incoming Discord messages.
 func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore messages from the bot.
+	// Ignore messages from the bot itself
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
@@ -67,6 +69,8 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
+	ctx := context.Background()
+
 	switch parts[0] {
 	case "!setLang":
 		if len(parts) < 2 {
@@ -74,59 +78,97 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		lang := parts[1]
+
+		// Store language preference in PostgreSQL
+		err := b.store.Lang.SetUserLang(ctx, guildID, lang)
+		if err != nil {
+			s.ChannelMessageSend(m.ChannelID, "Failed to set language preference.")
+			return
+		}
+
 		guildDefaultLang[guildID] = lang
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Default language set to '%s' for this session.", lang))
+
 	case "!recent":
 		// Usage: !recent [optional: language_code]
 		var lang string
 		if len(parts) >= 2 {
 			lang = parts[1]
 		} else {
-			lang = guildDefaultLang[guildID]
+			// Try getting the user's preferred language from the database
+			lang, _ = b.store.Lang.GetUserLang(ctx, guildID)
 			if lang == "" {
 				lang = "en"
 			}
 		}
 
-		events := b.eventStore.GetEvents(lang)
-		if len(events) == 0 {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("No recent changes for language: %s", lang))
+		events, err := b.store.Event.GetRecent(ctx, lang, 10)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("No recent changes for language: %s", lang))
+				return
+			}
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error retrieving recent changes: %v", err))
 			return
 		}
 
-		var response strings.Builder
-		response.WriteString(fmt.Sprintf("Recent changes for '%s':\n", lang))
+		var responseBuilder strings.Builder
 		for i, event := range events {
 			t := time.Unix(event.Timestamp, 0).Format(time.RFC822)
-			// Generate a URL for the change.
 			encodedTitle := url.PathEscape(event.Title)
 			urlStr := fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, encodedTitle)
-			response.WriteString(fmt.Sprintf("%d. [%s] %s (%s) by %s - %s\n", i+1, t, event.Title, urlStr, event.User, event.Comment))
+			entry := fmt.Sprintf("%d. [%s] [%s](%s) by **%s**\nAuthor Comment: %s\n\n",
+				i+1, t, event.Title, urlStr, event.User, event.Comment)
+
+			if responseBuilder.Len()+len(entry) > 2000 {
+				s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
+				responseBuilder.Reset()
+			}
+
+			responseBuilder.WriteString(entry)
 		}
-		s.ChannelMessageSend(m.ChannelID, response.String())
+
+		if responseBuilder.Len() > 0 {
+			s.ChannelMessageSend(m.ChannelID, responseBuilder.String())
+		}
+
 	case "!stats":
 		// Usage: !stats [yyyy-mm-dd] [optional: language_code]
 		if len(parts) < 2 {
 			s.ChannelMessageSend(m.ChannelID, "Usage: !stats [yyyy-mm-dd] [optional: language_code]")
 			return
 		}
+
 		dateStr := parts[1]
 		var lang string
 		if len(parts) >= 3 {
 			lang = parts[2]
 		} else {
-			lang = guildDefaultLang[guildID]
+			// Try getting the user's preferred language from the database
+			lang, _ = b.store.Lang.GetUserLang(ctx, guildID)
 			if lang == "" {
 				lang = "en"
 			}
 		}
-		// Validate date format.
+
+		// Validate date format
 		_, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
 			s.ChannelMessageSend(m.ChannelID, "Invalid date format. Please use yyyy-mm-dd.")
 			return
 		}
-		count := b.eventStore.GetStats(lang, dateStr)
+
+		// Fetch stats from PostgreSQL
+		count, err := b.store.Stat.Get(ctx, lang, dateStr)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("No stats found for %s on %s", lang, dateStr))
+				return
+			}
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error retrieving stats: %v", err))
+			return
+		}
+
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("On %s, there were %d changes for language '%s'.", dateStr, count, lang))
 	}
 }
