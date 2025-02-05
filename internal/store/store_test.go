@@ -12,7 +12,7 @@ import (
 	"github.com/vlkhvnn/TestON/internal/models"
 )
 
-var testDSN = "postgres://postgres:1234@localhost:5434/teston?sslmode=disable"
+var testDSN = "postgres://postgres:1234@localhost:5432/teston?sslmode=disable"
 
 func setupTestDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("postgres", testDSN)
