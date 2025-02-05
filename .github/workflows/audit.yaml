@@ -1,27 +1,68 @@
 name: Audit
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
 jobs:
-  audit:
-    runs-on: ubuntu-20.04
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.3
+        env:
+          POSTGRES_DB: teston
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1234
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d teston"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.20
-      - name: Verify Depedencies
+          go-version: "1.20"
+
+      - name: Verify Dependencies
         run: go mod verify
+
       - name: Build
         run: go build -v ./...
+
       - name: Run go vet
         run: go vet ./...
+
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
       - name: Run staticcheck
         run: staticcheck ./...
+
       - name: Run Tests
         run: go test -race ./...
+
+  docker_build:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+
+      - name: Build Docker image
+        run: |
+          docker build -t teston:latest .
