@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vlkhvnn/TestON/internal/models"
@@ -23,9 +22,6 @@ func (ms *MockSession) ChannelMessageSend(channelID, content string, options ...
 }
 
 func TestRecentCommandWithLimit(t *testing.T) {
-	err := godotenv.Load("../../.env")
-	require.NoError(t, err)
-
 	mockEventStore := &store.MockEventStore{
 		RecentEvents: []*models.RecentChangeEvent{
 			{
