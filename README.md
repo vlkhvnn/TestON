@@ -17,7 +17,9 @@ TestON is a Discord bot that provides users with recent changes and statistics f
 - **PostgreSQL:**  
   A PostgreSQL database instance. Make sure there is nothing running locally on your machine on port 5432:5432.  
 - **Docker:**  
-  For running PostgreSQL  
+  For running PostgreSQL
+- **Make:**  
+  To run the migrations
 - **Discord Bot Token:**  
   Obtain token by creating a bot in the Discord Developer Portal
 
@@ -62,7 +64,10 @@ TestON is a Discord bot that provides users with recent changes and statistics f
    go run .
    ```
 4. **Run the Migrations**
-   On the another terminal run:
+   On the another terminal run. (If you do not have golang-migrate):
+   ```bash
+   brew install golang-migrate
+   ```
    ```bash
    make migrate-up
    ```
